@@ -1,0 +1,31 @@
+/* Keep It Green — design tokens (source of truth) */
+:root {
+  /* Color */
+  --kig-spring:   #18C964; /* Primary — mark, CTAs, accents */
+  --kig-forest:   #0C3B2A; /* Dark surface — hero, machine panels */
+  --kig-sun:      #FFC83D; /* Reward accent — points, badges, coins */
+  --kig-mint:     #DCF1E2; /* Tint surface */
+  --kig-paper:    #F6F7F1; /* App / page background */
+  --kig-charcoal: #13201A; /* Primary text */
+  --kig-muted:    #6B7A72; /* Secondary text */
+
+  /* Type */
+  --kig-font-display: "Space Grotesk", sans-serif; /* headings, numbers, labels */
+  --kig-font-body:    "Hanken Grotesk", sans-serif; /* body copy */
+
+  /* Type scale (px) */
+  --kig-text-display: 52;
+  --kig-text-h1:      32;
+  --kig-text-subtitle:22;
+  --kig-text-body:    17;
+  --kig-text-label:   13; /* uppercase, letter-spacing .14em */
+
+  /* Radius */
+  --kig-radius-token: 28%;  /* logo token / app icon */
+  --kig-radius-card:  20px;
+  --kig-radius-pill:  999px;
+
+  /* Motion */
+  --kig-ease-spring: cubic-bezier(.2,.8,.3,1.4); /* overshoot for "pop" */
+  --kig-dur-pop:     .9s;
+}

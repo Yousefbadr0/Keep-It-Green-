@@ -1,0 +1,41 @@
+# ── secrets (never commit) ────────────────────────────────
+AI/machine_config.json
+
+# ── superseded/archived material ─────────────────────────
+_archive/
+KeepItGreen_backend.zip
+app_offline.htm
+
+# ── .NET ──────────────────────────────────────────────────
+Recycle/bin/
+Recycle/obj/
+Recycle/publish/
+*.user
+
+# ── Flutter / Android ────────────────────────────────────
+Mobile/build/
+Mobile/.dart_tool/
+Mobile/.flutter-plugins*
+Mobile/android/.gradle/
+Mobile/android/local.properties
+Mobile/android/app/.cxx/
+*.apk
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.pyc
+AI/captures/
+AI/runs/
+
+# ── Node (doc/deck generators) ────────────────────────────
+node_modules/
+package-lock.json
+
+# ── OS / editor noise ─────────────────────────────────────
+Thumbs.db
+.DS_Store
+*.tmp
+.claude/
+
+# ── Recycle/ is the team's own git repo (github.com/shahdyounis77/Recycle) ──
+Recycle/
