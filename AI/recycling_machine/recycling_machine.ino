@@ -1,4 +1,4 @@
-a/*
+/*
   Keep It Green — Arduino Compartment Controller  (Arduino NANO + 2× SG90)
   ========================================================================
   Receives one-byte commands from the laptop (machine.py) over USB serial and
@@ -47,9 +47,9 @@ const int LED_GREEN_PIN      = 7;   // lights while a compartment is open (optio
 const int LED_RED_PIN        = 6;   // blinks on a rejected item          (optional)
 
 // ─── Servo angles / timing  (tune for your gate mechanism) ───────────────────
-const int           CLOSE_ANGLE = 0;      // gate shut
-const int           OPEN_ANGLE  = 90;     // gate open (SG90 range is 0..180)
-const unsigned long OPEN_MS     = 3000;   // how long the compartment stays open
+const int           CLOSE_ANGLE = 90;      // gate shut
+const int           OPEN_ANGLE  = 180;     // gate open (SG90 range is 0..180)
+const unsigned long OPEN_MS     = 5000;   // how long the compartment stays open
 const unsigned long REJECT_MS   = 500;    // red LED blink duration
 const bool          BOOT_SELFTEST = true; // sweep both gates once on power-up
 
