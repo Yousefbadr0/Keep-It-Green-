@@ -221,19 +221,71 @@ def session_status(code):
         return False, None
 
 
-def submit(code, item, conf, frame):
-    img_path = ""
-    if frame is not None and HAS_CV:
-        Path("captures").mkdir(exist_ok=True)
-        img_path = f"captures/{int(time.time())}_{item}.jpg"
-        cv2.imwrite(img_path, frame)
+_PENDING = Path(__file__).resolve().parent / "pending_transactions.jsonl"
+CAPTURES_KEEP = 300              # newest capture images to keep (older auto-pruned)
+
+
+def _save_capture(item, frame):
+    """Save the accepted frame (labelling material for retraining) and prune old ones."""
+    if frame is None or not HAS_CV:
+        return ""
+    cap_dir = Path("captures"); cap_dir.mkdir(exist_ok=True)
+    img_path = f"captures/{int(time.time())}_{item}.jpg"
+    cv2.imwrite(img_path, frame)
     try:
-        requests.post(f"{BACKEND_BASE}/api/Detection",
-                      json={"Otp": code, "ItemType": item,
-                            "ConfidenceScore": round(conf, 3), "ImagePath": img_path},
+        files = sorted(cap_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime)
+        for old in files[:-CAPTURES_KEEP]:
+            old.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return img_path
+
+
+def _post_detection(payload):
+    r = requests.post(f"{BACKEND_BASE}/api/Detection", json=payload,
                       headers={"X-Machine-Key": MACHINE_KEY}, timeout=10)
-    except Exception as e:
-        print("[WARN] transaction submit failed:", e)
+    # 2xx = credited; 4xx = permanently rejected (bad session) — don't retry those.
+    return r.status_code < 500
+
+
+def flush_pending():
+    """Re-send transactions that failed earlier (network blip) so no points are lost."""
+    if not _PENDING.exists():
+        return
+    lines = [ln for ln in _PENDING.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    still = []
+    for ln in lines:
+        try:
+            if not _post_detection(json.loads(ln)):
+                pass                      # 4xx: session is gone; drop it
+        except Exception:
+            still.append(ln)              # network again -> keep for next time
+    if still:
+        _PENDING.write_text("\n".join(still) + "\n", encoding="utf-8")
+        print(f"[queue] {len(still)} transaction(s) still pending")
+    else:
+        _PENDING.unlink(missing_ok=True)
+        if lines:
+            print(f"[queue] flushed {len(lines)} queued transaction(s)")
+
+
+def submit(code, item, conf, frame):
+    """Credit the item. Retries on transient failure; if the network is down, the
+    transaction is queued to disk and re-sent at the next session start — the user's
+    points are never silently lost."""
+    img_path = _save_capture(item, frame)
+    payload = {"Otp": code, "ItemType": item,
+               "ConfidenceScore": round(conf, 3), "ImagePath": img_path}
+    for attempt in range(3):
+        try:
+            _post_detection(payload)
+            return
+        except Exception as e:
+            print(f"[WARN] submit attempt {attempt + 1}/3 failed: {e}")
+            time.sleep(0.8 * (attempt + 1))
+    with _PENDING.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload) + "\n")
+    print("[queue] transaction saved to pending_transactions.jsonl (will retry)")
 
 
 # ----------------------------- detection ---------------------------------
@@ -247,6 +299,19 @@ def _item_from_class(name):
     return None
 
 
+def detection_supervisor():
+    """Keeps detection alive: if the loop ever dies (camera unplugged, driver hiccup,
+    model error) it logs the cause and restarts instead of leaving the machine frozen."""
+    while True:
+        try:
+            detection_thread()
+        except Exception as e:
+            print(f"[ERROR] detection loop crashed: {e!r} — restarting in 3s")
+            with _lock:
+                _det.update(item=None, conf=0.0, frame=None)
+            time.sleep(3)
+
+
 def detection_thread():
     model = YOLO(MODEL_PATH)
     names = model.names
@@ -258,9 +323,12 @@ def detection_thread():
     # Open the camera ONCE and keep it WARM in the background, so it opens instantly when
     # a session starts (no VideoCapture re-init lag). The MODEL, however, runs only on the
     # place-item screen -> a warm camera, but NO detecting/counting in the background.
-    cap = cv2.VideoCapture(0)
+    cam_index = int(_cfg.get("camera_index", 0))
+    cap = cv2.VideoCapture(cam_index)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    if not cap.isOpened():
+        print(f"[ERROR] camera {cam_index} could not be opened — check camera_index in machine_config.json")
     print("Detection thread started (camera warm; model runs only on the place-item screen).")
     last_push = 0.0
     last_log = 0.0
@@ -416,11 +484,13 @@ def run():
     wait_ready()
     arduino = open_arduino()
     if HAS_CV and not SIMULATE:
-        threading.Thread(target=detection_thread, daemon=True).start()
+        threading.Thread(target=detection_supervisor, daemon=True).start()
     else:
         print("Running in SIMULATE mode (no camera/model) — items auto-generated.")
 
     while True:
+        flush_pending()                   # re-send any transactions queued while offline
+
         # 1) start a session and show the QR + code
         try:
             info = start_session()

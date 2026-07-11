@@ -25,6 +25,7 @@ Mobile/android/app/.cxx/
 __pycache__/
 *.pyc
 AI/captures/
+AI/pending_transactions.jsonl
 AI/runs/
 
 # ── Node (doc/deck generators) ────────────────────────────
