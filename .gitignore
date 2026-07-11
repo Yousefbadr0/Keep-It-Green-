@@ -44,3 +44,6 @@ Recycle/
 # ── Android release signing (keep the keystore backed up OUTSIDE git) ──
 Mobile/android/key.properties
 Mobile/android/app/*.keystore
+
+# ── DB backup: contains real user data — never publish ──
+Database/*.bak
