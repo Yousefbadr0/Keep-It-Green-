@@ -646,16 +646,20 @@ def run():
 
             if item and armed and now > cooldown:
                 pts = POINTS[item]
-                # Open the physical gate FIRST so it reacts instantly — submit() can
-                # block for several seconds on a slow/failed network and must not delay it.
-                fire_gate(arduino, item)
-                submit(active_code, item, conf, frame)
                 items += 1
                 points += pts
                 cooldown = now + COOLDOWN_SEC
                 armed = False               # don't re-count until the object is removed
 
+                # Show the item-type screen AND open the gate together — both are local
+                # and instant, so the servo moves exactly as "Plastic bottle"/"Aluminum
+                # can" appears. (Firing before submit() desynced them: the gate opened
+                # during the live green-box preview, before the item-type screen.)
                 ui({"state": "detected", "item": DISPLAY[item], "confidence": round(conf * 100), "points": pts})
+                fire_gate(arduino, item)
+                # Record the transaction in the background so a slow/failed network can
+                # never delay the screen or the servo (submit() retries + queues on its own).
+                threading.Thread(target=submit, args=(active_code, item, conf, frame), daemon=True).start()
                 time.sleep(2.4)
                 ui({"state": "drop", "item": item})
                 time.sleep(2.2)
