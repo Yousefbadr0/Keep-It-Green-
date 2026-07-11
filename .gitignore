@@ -40,3 +40,7 @@ Thumbs.db
 
 # ── Recycle/ is the team's own git repo (github.com/shahdyounis77/Recycle) ──
 Recycle/
+
+# ── Android release signing (keep the keystore backed up OUTSIDE git) ──
+Mobile/android/key.properties
+Mobile/android/app/*.keystore

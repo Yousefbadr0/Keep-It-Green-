@@ -33,21 +33,24 @@ class ApiService {
   bool get hasCustomServer => _server != null && _server!.isNotEmpty;
 
   String? _token;
-  // Logged in only if we hold a token that has NOT expired. An expired token used to
-  // still route to Home, where every call 401'd and no data loaded until a re-login;
-  // now it cleanly routes to the login screen instead.
+  // Logged in if the access token is still valid OR we hold a refresh token (the
+  // first 401 then refreshes silently). Prevents both the old "stale token, empty
+  // Home" bug and needless re-logins.
   bool get isLoggedIn {
     if (_token == null || _token!.isEmpty) return false;
     try {
       final exp = _payload()['exp'];
-      if (exp is int) return DateTime.now().millisecondsSinceEpoch < exp * 1000;
-    } catch (_) {/* no/!decodable exp -> treat as valid */}
+      if (exp is int && DateTime.now().millisecondsSinceEpoch >= exp * 1000) {
+        return _refresh != null && _refresh!.isNotEmpty;
+      }
+    } catch (_) {/* no/undecodable exp -> treat as valid */}
     return true;
   }
 
   Future<void> loadToken() async {
     final p = await SharedPreferences.getInstance();
     _token = p.getString('kig_token');
+    _refresh = p.getString('kig_refresh');
     // One-time cleanup: drop any old saved server (e.g. a LAN IP from earlier
     // testing) so upgrades always default to the live cloud backend.
     const cfgVersion = 2;
@@ -142,6 +145,17 @@ class ApiService {
     }
   }
 
+  String? _refresh; // rotating refresh token (see _tryRefresh)
+  Future<void> _setRefresh(String? t) async {
+    _refresh = t;
+    final p = await SharedPreferences.getInstance();
+    if (t == null) {
+      await p.remove('kig_refresh');
+    } else {
+      await p.setString('kig_refresh', t);
+    }
+  }
+
   Map<String, String> _headers({bool auth = true}) => {
         'Content-Type': 'application/json',
         if (auth && isLoggedIn) 'Authorization': 'Bearer $_token',
@@ -166,58 +180,77 @@ class ApiService {
     throw ApiException(msg, r.statusCode);
   }
 
-  Future<dynamic> _get(String path) async {
+  /// Runs an authed request; on 401 it silently refreshes the access token once
+  /// (rotating refresh token) and retries, so users stay signed in indefinitely
+  /// without ever seeing a login screen mid-task.
+  Future<dynamic> _authed(Future<http.Response> Function() send) async {
     try {
-      return _decode(await http.get(Uri.parse('$baseUrl$path'), headers: _headers()));
-    } on ApiException {
+      return _decode(await send());
+    } on ApiException catch (e) {
+      if (e.statusCode == 401 && await _tryRefresh()) {
+        return _decode(await send());
+      }
       rethrow;
     } catch (_) {
       throw ApiException('Cannot reach the server. Is the backend running?', 0);
     }
   }
+
+  Future<bool> _tryRefresh() async {
+    if (_refresh == null || _refresh!.isEmpty) return false;
+    try {
+      final r = await http.post(Uri.parse('$baseUrl/api/User/Refresh'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'RefreshToken': _refresh}));
+      if (r.statusCode < 200 || r.statusCode >= 300) return false;
+      final body = jsonDecode(r.body) as Map<String, dynamic>;
+      await _setToken(body['Token'] as String?);
+      await _setRefresh(body['RefreshToken'] as String?);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<dynamic> _get(String path) =>
+      _authed(() => http.get(Uri.parse('$baseUrl$path'), headers: _headers()));
 
   Future<dynamic> _post(String path, [Object? body, bool auth = true]) async {
-    try {
-      return _decode(await http.post(Uri.parse('$baseUrl$path'),
-          headers: _headers(auth: auth), body: body != null ? jsonEncode(body) : null));
-    } on ApiException {
-      rethrow;
-    } catch (_) {
-      throw ApiException('Cannot reach the server. Is the backend running?', 0);
+    if (!auth) {
+      try {
+        return _decode(await http.post(Uri.parse('$baseUrl$path'),
+            headers: _headers(auth: false), body: body != null ? jsonEncode(body) : null));
+      } on ApiException {
+        rethrow;
+      } catch (_) {
+        throw ApiException('Cannot reach the server. Is the backend running?', 0);
+      }
     }
+    return _authed(() => http.post(Uri.parse('$baseUrl$path'),
+        headers: _headers(), body: body != null ? jsonEncode(body) : null));
   }
 
-  Future<dynamic> _put(String path, [Object? body]) async {
-    try {
-      return _decode(await http.put(Uri.parse('$baseUrl$path'),
+  Future<dynamic> _put(String path, [Object? body]) =>
+      _authed(() => http.put(Uri.parse('$baseUrl$path'),
           headers: _headers(), body: body != null ? jsonEncode(body) : null));
-    } on ApiException {
-      rethrow;
-    } catch (_) {
-      throw ApiException('Cannot reach the server. Is the backend running?', 0);
-    }
-  }
 
-  Future<dynamic> _delete(String path) async {
-    try {
-      return _decode(await http.delete(Uri.parse('$baseUrl$path'), headers: _headers()));
-    } on ApiException {
-      rethrow;
-    } catch (_) {
-      throw ApiException('Cannot reach the server. Is the backend running?', 0);
-    }
-  }
+  Future<dynamic> _delete(String path) =>
+      _authed(() => http.delete(Uri.parse('$baseUrl$path'), headers: _headers()));
 
   // ---- auth ----
   Future<void> login(String email, String password) async {
     final r = await _post('/api/User/Login', {'Email': email, 'Password': password}, false);
     await _setToken(r['Token'] as String);
+    await _setRefresh(r['RefreshToken'] as String?);
   }
 
   Future<void> register(String userName, String email, String password) =>
       _post('/api/User/Register', {'UserName': userName, 'Email': email, 'Password': password}, false);
 
-  Future<void> logout() => _setToken(null);
+  Future<void> logout() async {
+    await _setToken(null);
+    await _setRefresh(null);
+  }
 
   // ---- ATM pairing (scan the machine QR / enter the code) ----
   Future<Map<String, dynamic>> pair(String code) async =>
@@ -282,5 +315,5 @@ class ApiService {
 
   /// All transactions recorded at a machine (admin report).
   Future<List<dynamic>> adminTransactions(int machineId) async =>
-      await _get('/api/Transaction/Admin/$machineId') as List<dynamic>;
+      await _get('/api/Transaction/Admin/$machineId?page=1&pageSize=200') as List<dynamic>;
 }
