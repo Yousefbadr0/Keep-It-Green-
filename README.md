@@ -102,9 +102,21 @@ app_offline upload) in `DEPLOYMENT.md`.
 
 Yousef Badr · Eslam Medhat · Ahmed Anwer · Mohanad Ayman · Menna Osama · Shahd El Aswad
 
+## Security & reliability notes
+
+- **Auth:** JWT access tokens (7 days) + rotating refresh tokens (60 days, hash-stored);
+  login locks for 5 minutes after 5 failed attempts; machine key compared in constant time.
+- **Money path:** redemption runs in a serializable DB transaction (no double-spend).
+- **Machine:** failed detection submissions are queued to disk and re-sent (points are
+  never lost); the detection loop self-restarts on camera/model errors.
+- **Signing:** release APK is signed with `Mobile/android/kig-release.keystore` —
+  **back up the keystore + `key.properties` somewhere safe (outside git); losing them
+  means you can never update the installed app.**
+- Backend builds with **0 warnings / 0 errors**.
+
 ## Known technical debt (deliberate, documented)
 
-- ~68 nullable-reference warnings in the backend (no errors) — enable NRT cleanup pass later.
-- No rate limiting on `/api/User/Login` — acceptable at pilot scale, add before real scale.
 - CORS is open (`AllowAll`) — safe for a JWT-bearer API (no cookies), tighten if cookies ever appear.
-- Release APK is debug-signed — create a proper keystore before any store submission.
+- Old refresh tokens accumulate in the DB — add a periodic cleanup job if usage grows.
+- The model's plastic recall (0.76) is the weakest number in the system — label the
+  machine's own captures (`AI/prepare_captures.py`) and fine-tune to fix it.
