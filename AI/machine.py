@@ -418,17 +418,104 @@ def detection_thread():
             last_push = now
 
 
-def open_arduino():
-    if not HAS_SERIAL or ARDUINO_PORT is None:
-        return None
+def _list_serial_ports():
+    """All candidate serial ports, likely-Arduino ones first (CH340/USB-SERIAL/Arduino)."""
     try:
-        ser = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=1)
-        time.sleep(2)
-        print("Arduino connected on", ARDUINO_PORT)
-        return ser
+        from serial.tools import list_ports
+    except Exception:
+        return []
+    ports = list(list_ports.comports())
+    def score(p):
+        blob = f"{p.description} {p.manufacturer} {p.hwid}".lower()
+        return any(k in blob for k in ("arduino", "ch340", "ch910", "usb-serial", "usb serial", "wch", "silabs", "cp210", "ftdi"))
+    ports.sort(key=score, reverse=True)
+    return ports
+
+
+def _try_open(port):
+    """Open one port and wait for the Nano to boot; return the Serial or None."""
+    try:
+        ser = serial.Serial(port, BAUD_RATE, timeout=1)
     except Exception as e:
-        print("[WARN] Arduino not connected:", e)
+        print(f"[arduino] could not open {port}: {e}")
         return None
+    # Opening the port resets the Nano -> it runs its boot self-test then prints READY.
+    # Read lines for a few seconds looking for READY (both gates also physically move now).
+    deadline = time.time() + 6
+    saw_ready = False
+    while time.time() < deadline:
+        try:
+            line = ser.readline().decode("utf-8", "ignore").strip()
+        except Exception:
+            break
+        if line:
+            print(f"[arduino:{port}] {line}")
+            if "READY" in line:
+                saw_ready = True
+                break
+    if saw_ready:
+        print(f"[arduino] connected on {port} (boot self-test ran — both gates should have moved)")
+        return ser
+    print(f"[arduino] {port} opened but never said READY — wrong device? keeping it anyway")
+    return ser  # keep it; some clones are slow/quiet, commands may still work
+
+
+def open_arduino():
+    """Connect to the Arduino. Tries the configured port, then AUTO-DETECTS by
+    scanning every serial port (Windows renumbers COM ports on replug, which is the
+    #1 reason the gate 'does nothing')."""
+    if not HAS_SERIAL:
+        print("[arduino] pyserial is NOT installed -> servos disabled.")
+        print("          fix: pip install pyserial")
+        return None
+
+    tried = []
+    if ARDUINO_PORT:
+        ser = _try_open(ARDUINO_PORT)
+        if ser:
+            return ser
+        tried.append(ARDUINO_PORT)
+
+    # Auto-detect: try every other serial port, Arduino-looking ones first.
+    for p in _list_serial_ports():
+        if p.device in tried:
+            continue
+        print(f"[arduino] auto-detect: trying {p.device} ({p.description})")
+        ser = _try_open(p.device)
+        if ser:
+            print(f"[arduino] AUTO-DETECTED on {p.device} — set \"arduino_port\": \"{p.device}\" in machine_config.json to skip the scan next time")
+            return ser
+        tried.append(p.device)
+
+    avail = ", ".join(f"{p.device} ({p.description})" for p in _list_serial_ports()) or "none found"
+    print(f"[arduino] NOT connected. Configured port: {ARDUINO_PORT or 'none'}. Available ports: {avail}")
+    print("          Check the USB cable, close the Arduino IDE Serial Monitor (it locks the port), and verify the COM number in Device Manager.")
+    return None
+
+
+def fire_gate(arduino, item):
+    """Send the open command for this item and confirm it went out. Returns True on
+    a successful write. Logs loudly on failure (no more silent except-pass)."""
+    if arduino is None:
+        print(f"[arduino] gate '{item}' NOT fired — no Arduino connected.")
+        return False
+    cmd = SERIAL_CMD.get(item)
+    if not cmd:
+        return False
+    try:
+        arduino.write(cmd)
+        arduino.flush()                       # push the byte out now
+        print(f"[arduino] sent '{cmd.decode()}' for {item} -> gate should open")
+        # read back the Nano's ACK/DONE lines (non-fatal if none arrive)
+        t = time.time() + 0.5
+        while time.time() < t:
+            line = arduino.readline().decode("utf-8", "ignore").strip()
+            if line:
+                print(f"[arduino] <- {line}")
+        return True
+    except Exception as e:
+        print(f"[arduino] WRITE FAILED for {item}: {e} — cable unplugged or port lost.")
+        return False
 
 
 def pop_entered():
@@ -559,12 +646,10 @@ def run():
 
             if item and armed and now > cooldown:
                 pts = POINTS[item]
+                # Open the physical gate FIRST so it reacts instantly — submit() can
+                # block for several seconds on a slow/failed network and must not delay it.
+                fire_gate(arduino, item)
                 submit(active_code, item, conf, frame)
-                if arduino:
-                    try:
-                        arduino.write(SERIAL_CMD[item])
-                    except Exception:
-                        pass
                 items += 1
                 points += pts
                 cooldown = now + COOLDOWN_SEC

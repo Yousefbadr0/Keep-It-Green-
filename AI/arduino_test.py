@@ -62,14 +62,32 @@ def main():
         list_available()
         return
 
-    port = next((a for a in args if not a.startswith("-")), PORT)
-    print(f"Opening {port} @ {BAUD} baud ...  (Ctrl-C to quit)")
-    try:
-        ser = serial.Serial(port, BAUD, timeout=1)
-    except Exception as e:
-        print(f"[ERROR] could not open {port}: {e}")
-        print("Tip: run  python arduino_test.py --list  to see the right port name.")
+    port = next((a for a in args if not a.startswith("-")), None)
+    ser = None
+    # If no port was given, or the given one fails, AUTO-DETECT (Windows renumbers
+    # COM ports on replug — this is the usual reason a fixed port "does nothing").
+    candidates = [port] if port else []
+    if not candidates:
+        found = list(list_ports.comports())
+        found.sort(key=lambda p: any(k in f"{p.description} {p.hwid}".lower()
+                   for k in ("arduino", "ch340", "usb-serial", "wch", "cp210", "ftdi", "silabs")), reverse=True)
+        candidates = [p.device for p in found]
+        if candidates:
+            print("Auto-detecting Arduino among:", ", ".join(candidates))
+    for p in candidates:
+        print(f"Opening {p} @ {BAUD} baud ...")
+        try:
+            ser = serial.Serial(p, BAUD, timeout=1)
+            port = p
+            break
+        except Exception as e:
+            print(f"  could not open {p}: {e}")
+    if ser is None:
+        print("[ERROR] no Arduino could be opened.")
+        list_available()
+        print("Tip: close the Arduino IDE Serial Monitor (it locks the port) and check the cable.")
         return
+    print(f"Connected on {port}.  (Ctrl-C to quit)")
 
     time.sleep(2.0)  # the Nano reboots when the port opens — wait for it
     threading.Thread(target=reader, args=(ser,), daemon=True).start()
