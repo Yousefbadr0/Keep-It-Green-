@@ -12,6 +12,22 @@ class RewardsTab extends StatefulWidget {
 
 class _RewardsTabState extends State<RewardsTab> {
   late Future<(num, List<dynamic>)> _data;
+  String _filter = 'All';           // All / Affordable
+  String _sort = 'Lowest cost';     // Lowest cost / Highest cost / Vendor
+
+  List<dynamic> _apply(List<dynamic> src, num balance) {
+    num cost(dynamic p) => p['RequiredCoins'] as num? ?? 0;
+    final list = src.where((p) => _filter == 'All' || balance >= cost(p)).toList();
+    if (_sort == 'Highest cost') {
+      list.sort((a, b) => cost(b).compareTo(cost(a)));
+    } else if (_sort == 'Vendor') {
+      list.sort((a, b) => (a['VendorName'] ?? '').toString().toLowerCase()
+          .compareTo((b['VendorName'] ?? '').toString().toLowerCase()));
+    } else {
+      list.sort((a, b) => cost(a).compareTo(cost(b)));
+    }
+    return list;
+  }
 
   @override
   void initState() {
@@ -82,23 +98,42 @@ class _RewardsTabState extends State<RewardsTab> {
                   PointsPill('${fmtPts(balance)} pts', bg: Kig.forest, fg: Kig.sun),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               if (!snap.hasData) const Center(child: Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator())),
               if (snap.hasData && promos.isEmpty)
                 const Padding(padding: EdgeInsets.all(30), child: Center(child: Text('No rewards available yet.', style: TextStyle(color: Kig.muted)))),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.82,
-                children: promos.map<Widget>((p) => _RewardCard(
-                      promo: Map<String, dynamic>.from(p),
-                      affordable: balance >= (p['RequiredCoins'] as num),
-                      onTap: () => _redeem(Map<String, dynamic>.from(p), balance),
-                    )).toList(),
-              ),
+              if (promos.isNotEmpty) ...[
+                FilterSortBar(
+                  filters: const ['All', 'Affordable'],
+                  filter: _filter,
+                  onFilter: (f) => setState(() => _filter = f),
+                  sorts: const ['Lowest cost', 'Highest cost', 'Vendor'],
+                  sort: _sort,
+                  onSort: (s) => setState(() => _sort = s),
+                ),
+                const SizedBox(height: 10),
+              ],
+              Builder(builder: (context) {
+                final shown = _apply(promos, balance);
+                if (promos.isNotEmpty && shown.isEmpty) {
+                  return const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: Text('No rewards match this filter.', style: TextStyle(color: Kig.muted))));
+                }
+                return GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 0.82,
+                  children: shown.map<Widget>((p) => _RewardCard(
+                        promo: Map<String, dynamic>.from(p),
+                        affordable: balance >= (p['RequiredCoins'] as num),
+                        onTap: () => _redeem(Map<String, dynamic>.from(p), balance),
+                      )).toList(),
+                );
+              }),
             ],
           );
         },

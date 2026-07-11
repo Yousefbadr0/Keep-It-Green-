@@ -64,6 +64,74 @@ String fmtPts(num n) {
   return s.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }
 
+/// Compact filter (chips) + sort (menu) bar shared by every long list in the app
+/// (activity, rewards, admin machines/reports/vendors). Pass an empty `filters`
+/// list to show only the sort menu.
+class FilterSortBar extends StatelessWidget {
+  final List<String> filters;
+  final String filter;
+  final ValueChanged<String> onFilter;
+  final List<String> sorts;
+  final String sort;
+  final ValueChanged<String> onSort;
+  const FilterSortBar({
+    super.key,
+    this.filters = const [],
+    this.filter = '',
+    required this.onFilter,
+    required this.sorts,
+    required this.sort,
+    required this.onSort,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Expanded(
+        child: filters.length > 1
+            ? SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: filters
+                      .map((f) => Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(f),
+                              selected: filter == f,
+                              onSelected: (_) => onFilter(f),
+                              showCheckmark: false,
+                              selectedColor: Kig.mint,
+                              labelStyle: TextStyle(
+                                  color: filter == f ? Kig.forest : Kig.muted,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12.5),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              )
+            : const SizedBox.shrink(),
+      ),
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.sort, color: Kig.forest),
+        tooltip: 'Sort by',
+        onSelected: onSort,
+        itemBuilder: (_) => sorts
+            .map((s) => PopupMenuItem<String>(
+                  value: s,
+                  child: Row(children: [
+                    Icon(sort == s ? Icons.radio_button_checked : Icons.radio_button_off,
+                        size: 16, color: sort == s ? Kig.forest : Kig.muted),
+                    const SizedBox(width: 8),
+                    Text(s),
+                  ]),
+                ))
+            .toList(),
+      ),
+    ]);
+  }
+}
+
 void showSnack(BuildContext context, String message, {bool error = false}) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()

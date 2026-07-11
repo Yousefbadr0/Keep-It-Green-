@@ -60,59 +60,6 @@ String _s(Map m, List<String> keys, [String def = '']) {
   return def;
 }
 
-/// Compact filter (chips) + sort (menu) bar reused across the admin lists.
-class _FilterSort extends StatelessWidget {
-  final List<String> filters;
-  final String filter;
-  final ValueChanged<String> onFilter;
-  final List<String> sorts;
-  final String sort;
-  final ValueChanged<String> onSort;
-  const _FilterSort({
-    required this.filters, required this.filter, required this.onFilter,
-    required this.sorts, required this.sort, required this.onSort,
-  });
-  @override
-  Widget build(BuildContext context) {
-    return Row(children: [
-      Expanded(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: filters.map((f) => Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: ChoiceChip(
-                label: Text(f),
-                selected: filter == f,
-                onSelected: (_) => onFilter(f),
-                showCheckmark: false,
-                selectedColor: Kig.mint,
-                labelStyle: TextStyle(
-                    color: filter == f ? Kig.forest : Kig.muted,
-                    fontWeight: FontWeight.w600, fontSize: 12.5),
-              ),
-            )).toList(),
-          ),
-        ),
-      ),
-      PopupMenuButton<String>(
-        icon: const Icon(Icons.sort, color: Kig.forest),
-        tooltip: 'Sort by',
-        onSelected: onSort,
-        itemBuilder: (_) => sorts.map((sName) => PopupMenuItem<String>(
-          value: sName,
-          child: Row(children: [
-            Icon(sort == sName ? Icons.radio_button_checked : Icons.radio_button_off,
-                size: 16, color: sort == sName ? Kig.forest : Kig.muted),
-            const SizedBox(width: 8),
-            Text(sName),
-          ]),
-        )).toList(),
-      ),
-    ]);
-  }
-}
-
 // ============================ MACHINES ============================
 class _MachinesTab extends StatefulWidget {
   const _MachinesTab();
@@ -250,7 +197,7 @@ class _MachinesTabState extends State<_MachinesTab> {
                 Text('${machines.length} total', style: const TextStyle(color: Kig.muted)),
                 const SizedBox(height: 12),
                 if (machines.isNotEmpty)
-                  _FilterSort(
+                  FilterSortBar(
                     filters: const ['All', 'Available', 'Offline'], filter: _filter,
                     onFilter: (f) => setState(() => _filter = f),
                     sorts: const ['Name', 'Location'], sort: _sort,
@@ -323,6 +270,14 @@ class _RewardsTab extends StatefulWidget {
 
 class _RewardsTabState extends State<_RewardsTab> {
   late Future<List<dynamic>> _future;
+  String _sort = 'Name';        // Name / Email
+
+  List<dynamic> _applySort(List<dynamic> src) {
+    final key = _sort == 'Email' ? ['Email', 'email'] : ['Name', 'name'];
+    final list = [...src];
+    list.sort((a, b) => _s(Map.from(a), key).toLowerCase().compareTo(_s(Map.from(b), key).toLowerCase()));
+    return list;
+  }
 
   @override
   void initState() {
@@ -461,12 +416,23 @@ class _RewardsTabState extends State<_RewardsTab> {
                   Expanded(child: FilledButton.icon(onPressed: () => _addPromo(vendors), icon: const Icon(Icons.local_offer_outlined), label: const Text('Add promo'))),
                 ]),
                 const SizedBox(height: 18),
-                Text('Vendors', style: display(16)),
+                Row(children: [
+                  Text('Vendors', style: display(16)),
+                  Expanded(
+                    child: vendors.isNotEmpty
+                        ? FilterSortBar(
+                            onFilter: (_) {},
+                            sorts: const ['Name', 'Email'], sort: _sort,
+                            onSort: (s) => setState(() => _sort = s),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ]),
                 const SizedBox(height: 8),
                 if (!snap.hasData) const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())),
                 if (snap.hasData && vendors.isEmpty)
                   const Padding(padding: EdgeInsets.all(20), child: Text('No vendors yet.', style: TextStyle(color: Kig.muted))),
-                ...vendors.map((v0) {
+                ..._applySort(vendors).map((v0) {
                   final v = Map<String, dynamic>.from(v0);
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -594,7 +560,7 @@ class _ReportsTabState extends State<_ReportsTab> {
                 final shown = _apply(txns);
                 return Column(
                   children: [
-                    _FilterSort(
+                    FilterSortBar(
                       filters: const ['All', 'Plastic', 'Aluminum'], filter: _filter,
                       onFilter: (f) => setState(() => _filter = f),
                       sorts: const ['Newest', 'Oldest', 'Most points'], sort: _sort,

@@ -1,4 +1,4 @@
-/*
+a/*
   Keep It Green — Arduino Compartment Controller  (Arduino NANO + 2× SG90)
   ========================================================================
   Receives one-byte commands from the laptop (machine.py) over USB serial and
