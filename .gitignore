@@ -37,9 +37,12 @@ Thumbs.db
 .DS_Store
 *.tmp
 .claude/
+~$*                 # Office lock/temp files (e.g. ~$deck.pptx)
 
-# ── Recycle/ is the team's own git repo (github.com/shahdyounis77/Recycle) ──
-Recycle/
+# NOTE: Recycle/ (the backend) is ALSO the team's own repo
+# (github.com/shahdyounis77/Recycle). Its files are included here as a full
+# project snapshot; its nested .git is ignored so it isn't added as a submodule.
+Recycle/.git/
 
 # ── Android release signing (keep the keystore backed up OUTSIDE git) ──
 Mobile/android/key.properties

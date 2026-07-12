@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Keep It Green — Machine</title>
+    <link rel="stylesheet" href="/css/fonts.css" />
+    <link rel="stylesheet" href="/css/kiosk-fonts.css" />
+    <link rel="stylesheet" href="/kiosk/kiosk.css" />
+</head>
+<body data-state="idle">
+
+    <!-- ============ 01 IDLE / WELCOME ============ -->
+    <section class="screen idle">
+        <div class="leaf-token big" id="idleLogo"></div>
+        <h1 class="display">Ready when you are</h1>
+        <div class="idle-options">
+            <div class="opt">
+                <p class="opt-h">Scan with the app</p>
+                <div class="qr-wrap">
+                    <img id="qrImg" class="qr" alt="Session QR" hidden />
+                    <div id="qrPlaceholder" class="qr placeholder"></div>
+                </div>
+                <div class="code" id="pairCode">——————</div>
+            </div>
+            <div class="opt-or">or</div>
+            <div class="opt">
+                <p class="opt-h">Enter your code</p>
+                <div class="keypad">
+                    <div class="kp-display" id="kpDisplay">• • • • • •</div>
+                    <div class="kp-grid">
+                        <button class="kp">1</button><button class="kp">2</button><button class="kp">3</button>
+                        <button class="kp">4</button><button class="kp">5</button><button class="kp">6</button>
+                        <button class="kp">7</button><button class="kp">8</button><button class="kp">9</button>
+                        <button class="kp kp-act" data-k="del">⌫</button>
+                        <button class="kp">0</button>
+                        <button class="kp kp-ok" data-k="ok">OK</button>
+                    </div>
+                    <div class="kp-error" id="kpError"></div>
+                </div>
+            </div>
+        </div>
+        <div class="station-tag"><span id="stationName">Riverside Park</span> · <span class="online">Online</span></div>
+    </section>
+
+    <!-- ============ 02 SESSION ACTIVE ============ -->
+    <section class="screen connected">
+        <header class="bar">
+            <div class="who"><span class="dot"></span>Connected — <span id="userName">—</span></div>
+            <div class="pts-pill"><span id="sessionPts">0</span> pts this session</div>
+        </header>
+        <div class="center">
+            <div class="target">
+                <div class="ring"></div>
+                <div class="view">
+                    <img id="camFeed" class="cam" alt="" hidden />
+                    <div class="cam-stripes" id="camStripes"></div>
+                </div>
+                <span class="br tl"></span><span class="br tr"></span>
+                <span class="br bl"></span><span class="br br2"></span>
+            </div>
+            <h2 class="display sm">Place an item in front of the camera</h2>
+            <p class="lead">Plastic bottles and aluminum cans earn points</p>
+        </div>
+    </section>
+
+    <!-- ============ 03 ITEM DETECTED ============ -->
+    <section class="screen detected">
+        <div class="check">✓</div>
+        <h1 class="display" id="detItem">Plastic bottle</h1>
+        <p class="lead"><span id="detConf">96</span>% confident</p>
+        <div class="pts-badge">+<span id="detPts">15</span> points</div>
+    </section>
+
+    <!-- ============ 04 DROP IT IN ============ -->
+    <section class="screen drop">
+        <h1 class="display">Drop it in the green bin</h1>
+        <div class="bins">
+            <div class="arrow">→</div>
+            <div class="compartments">
+                <div class="bin" id="binPlastic"><div class="name">Plastic</div><div class="st">closed</div></div>
+                <div class="bin" id="binAluminum"><div class="name">Aluminum</div><div class="st">closed</div></div>
+            </div>
+        </div>
+        <p class="lead">Sorting your item into the <span id="servoLabel">plastic</span> bin…</p>
+    </section>
+
+    <!-- ============ 04b ADD ANOTHER / FINISH ============ -->
+    <section class="screen choice">
+        <div class="check sm">✓</div>
+        <h2 class="display">Added — <span id="choiceItem">Plastic bottle</span></h2>
+        <div class="pts-badge">+<span id="choicePts">15</span> points</div>
+        <div class="choice-btns">
+            <button class="big-btn ghost" id="btnFinish">I'm done</button>
+            <button class="big-btn ok" id="btnAnother">Add another item</button>
+        </div>
+        <div class="auto-hint">Finishing automatically in <span id="choiceTimer">12</span>s</div>
+    </section>
+
+    <!-- ============ 05 SUMMARY ============ -->
+    <section class="screen summary">
+        <div class="leaf-token onspring" id="sumLogo"></div>
+        <h1 class="display">Nice work, <span id="sumName">there</span>!</h1>
+        <div class="stats">
+            <div class="stat"><div class="num" id="sumItems">0</div><div class="lbl">items recycled</div></div>
+            <div class="stat"><div class="num">+<span id="sumPts">0</span></div><div class="lbl">points earned</div></div>
+            <div class="stat" id="sumTotalWrap"><div class="num" id="sumTotal">0</div><div class="lbl">total points</div></div>
+        </div>
+        <div class="check-app">Thanks for keeping it green!</div>
+    </section>
+
+    <script src="/kiosk/kiosk.js"></script>
+</body>
+</html>
