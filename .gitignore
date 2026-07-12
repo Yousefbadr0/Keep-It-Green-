@@ -37,7 +37,8 @@ Thumbs.db
 .DS_Store
 *.tmp
 .claude/
-~$*                 # Office lock/temp files (e.g. ~$deck.pptx)
+# Office lock/temp files (e.g. ~$deck.pptx)
+~$*
 
 # NOTE: Recycle/ (the backend) is ALSO the team's own repo
 # (github.com/shahdyounis77/Recycle). Its files are included here as a full
