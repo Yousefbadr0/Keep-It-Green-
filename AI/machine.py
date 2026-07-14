@@ -433,12 +433,13 @@ def _list_serial_ports():
 
 
 def _try_open(port):
-    """Open one port and wait for the Nano to boot; return the Serial or None."""
+    """Open one port and wait for the Nano to boot. Returns (Serial|None, saw_ready).
+    saw_ready = the board sent our sketch's 'READY' handshake -> it's really OUR Arduino."""
     try:
         ser = serial.Serial(port, BAUD_RATE, timeout=1)
     except Exception as e:
         print(f"[arduino] could not open {port}: {e}")
-        return None
+        return None, False
     # Opening the port resets the Nano -> it runs its boot self-test then prints READY.
     # Read lines for a few seconds looking for READY (both gates also physically move now).
     deadline = time.time() + 6
@@ -454,42 +455,56 @@ def _try_open(port):
                 saw_ready = True
                 break
     if saw_ready:
-        print(f"[arduino] connected on {port} (boot self-test ran — both gates should have moved)")
-        return ser
-    print(f"[arduino] {port} opened but never said READY — wrong device? keeping it anyway")
-    return ser  # keep it; some clones are slow/quiet, commands may still work
+        print(f"[arduino] {port} said READY — this is our Arduino (both gates just moved).")
+    else:
+        print(f"[arduino] {port} opened but never said READY — probably NOT the Arduino.")
+    return ser, saw_ready
 
 
 def open_arduino():
-    """Connect to the Arduino. Tries the configured port, then AUTO-DETECTS by
-    scanning every serial port (Windows renumbers COM ports on replug, which is the
-    #1 reason the gate 'does nothing')."""
+    """Connect to the Arduino, preferring the port that actually identifies itself with
+    our sketch's READY handshake. This avoids the trap where the configured COM port was
+    reassigned by Windows and now points at a DIFFERENT device — we'd silently write to a
+    dead port and the gate would never move. Scans configured port first, then all others."""
     if not HAS_SERIAL:
-        print("[arduino] pyserial is NOT installed -> servos disabled.")
-        print("          fix: pip install pyserial")
+        print("[arduino] pyserial is NOT installed -> servos disabled.  fix: pip install pyserial")
         return None
 
-    tried = []
+    # candidate ports: configured first, then every detected port (Arduino-looking first)
+    candidates = []
     if ARDUINO_PORT:
-        ser = _try_open(ARDUINO_PORT)
-        if ser:
-            return ser
-        tried.append(ARDUINO_PORT)
-
-    # Auto-detect: try every other serial port, Arduino-looking ones first.
+        candidates.append(ARDUINO_PORT)
     for p in _list_serial_ports():
-        if p.device in tried:
+        if p.device not in candidates:
+            candidates.append(p.device)
+
+    fallback = None  # a port that opened but never handshook — last resort only
+    for port in candidates:
+        print(f"[arduino] trying {port} ...")
+        ser, ready = _try_open(port)
+        if ser is None:
             continue
-        print(f"[arduino] auto-detect: trying {p.device} ({p.description})")
-        ser = _try_open(p.device)
-        if ser:
-            print(f"[arduino] AUTO-DETECTED on {p.device} — set \"arduino_port\": \"{p.device}\" in machine_config.json to skip the scan next time")
+        if ready:
+            print(f"[arduino] CONNECTED on {port}. Servos armed.")
+            if ARDUINO_PORT != port:
+                print(f"          (tip: set \"arduino_port\": \"{port}\" in machine_config.json to skip the scan)")
             return ser
-        tried.append(p.device)
+        if fallback is None:
+            fallback = (ser, port)          # remember the first silent port
+        else:
+            try: ser.close()
+            except Exception: pass
+
+    if fallback is not None:
+        ser, port = fallback
+        print(f"[arduino] no port sent READY; using {port} as a last resort — if the gate")
+        print(f"          still doesn't move, run  python arduino_test.py  and type T.")
+        return ser
 
     avail = ", ".join(f"{p.device} ({p.description})" for p in _list_serial_ports()) or "none found"
-    print(f"[arduino] NOT connected. Configured port: {ARDUINO_PORT or 'none'}. Available ports: {avail}")
-    print("          Check the USB cable, close the Arduino IDE Serial Monitor (it locks the port), and verify the COM number in Device Manager.")
+    print(f"[arduino] NOT connected — servos DISABLED. Configured: {ARDUINO_PORT or 'none'}. Ports: {avail}")
+    print("          Check the USB cable, close the Arduino IDE Serial Monitor (it locks the port),")
+    print("          and verify the COM number in Device Manager. Then set arduino_port in machine_config.json.")
     return None
 
 

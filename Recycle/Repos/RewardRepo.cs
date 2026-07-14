@@ -52,10 +52,15 @@ namespace Recycle.Repos
         /// concurrent requests cannot both spend the same coins or exceed the usage limit.</summary>
         public bool TryRedeem(string userId, int promoId, int requiredCoins)
         {
-            using var tx = _context.Database.BeginTransaction(System.Data.IsolationLevel.Serializable);
-            try
+            // The DbContext uses EnableRetryOnFailure (resilient cloud DB), whose retrying
+            // execution strategy forbids a bare BeginTransaction — the manual transaction
+            // MUST run inside strategy.Execute so a transient failure retries the whole unit.
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return strategy.Execute(() =>
             {
-                // Atomic conditional decrement — 0 rows affected means the limit was hit.
+                using var tx = _context.Database.BeginTransaction(System.Data.IsolationLevel.Serializable);
+
+                // Atomic conditional decrement — 0 rows affected means the usage limit was hit.
                 var taken = _context.PromoCodes
                     .Where(p => p.Id == promoId && p.RemainingUsage > 0)
                     .ExecuteUpdate(s => s.SetProperty(p => p.RemainingUsage, p => p.RemainingUsage - 1));
@@ -69,23 +74,14 @@ namespace Recycle.Repos
                     .Sum(r => (int?)r.CoinsDeducted) ?? 0;
                 if (earned - redeemed < requiredCoins) { tx.Rollback(); return false; }
 
-                _context.Redemptions.Add(new Redemption
-                {
-                    UserId = userId,
-                    PromoId = promoId,
-                    CoinsDeducted = requiredCoins,
-                    RedemptionDate = DateTime.UtcNow,
-                    Status = StatusRedemption.Completed
-                });
-                _context.SaveChanges();
+                // Insert via raw SQL (not the change tracker) so a strategy retry can never
+                // double-insert a redemption. Interpolated values are parameterized by EF.
+                _context.Database.ExecuteSql(
+                    $"INSERT INTO Redemptions (UserId, PromoId, CoinsDeducted, RedemptionDate, Status) VALUES ({userId}, {promoId}, {requiredCoins}, {DateTime.UtcNow}, {(int)StatusRedemption.Completed})");
+
                 tx.Commit();
                 return true;
-            }
-            catch
-            {
-                tx.Rollback();
-                throw;
-            }
+            });
         }
 
         public void AddRedemption(string userId, int promoId, int coins)
